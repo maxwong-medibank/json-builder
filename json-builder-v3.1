@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- Previous head section remains the same -->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON Spec Builder</title>
+    <script crossorigin src="https://unpkg.com/react@17.0.2/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17.0.2/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6.26.0/babel.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .json-output {
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState } = React;
+
+        const JsonSpecBuilder = () => {
+            // Previous state declarations and most functions remain the same
+            const [nodes, setNodes] = useState([]);
+            const [result, setResult] = useState('');
+            const [copied, setCopied] = useState(false);
+
+            // All previous functions remain exactly the same except for updateNode
+            const updateNode = (id, field, value) => {
+                const updateNodes = (nodeList) => {
+                    return nodeList.map(node => {
+                        if (node.id === id) {
+                            // Clear children if changing from object/array to another type
+                            if (field === 'type' && 
+                                (node.type === 'object' || node.type === 'array') && 
+                                (value !== 'object' && value !== 'array')) {
+                                return { ...node, [field]: value, children: [] };
+                            }
+                            return { ...node, [field]: value };
+                        }
+                        if (node.children.length) {
+                            return { ...node, children: updateNodes(node.children) };
+                        }
+                        return node;
+                    });
+                };
+                setNodes(updateNodes(nodes));
+            };
+
+            // All other previous functions remain exactly the same until renderNode
+            const addNode = (parentId = null) => {
+                const newNode = {
+                    id: Date.now(),
+                    key: '',
+                    value: '',
+                    comment: '',
+                    type: 'string',
+                    parentId,
+                    children: []
+                };
+
+                if (!parentId) {
+                    setNodes([...nodes, newNode]);
+                } else {
+                    const updateNodes = (nodeList) => {
+                        return nodeList.map(node => {
+                            if (node.id === parentId) {
+                                return { ...node, children: [...node.children, newNode] };
+                            }
+                            if (node.children.length) {
+                                return { ...node, children: updateNodes(node.children) };
+                            }
+                            return node;
+                        });
+                    };
+                    setNodes(updateNodes(nodes));
+                }
+            };
+
+            const deleteNode = (id) => {
+                const filterNodes = (nodeList) => {
+                    return nodeList.filter(node => {
+                        if (node.id === id) return false;
+                        if (node.children.length) {
+                            node.children = filterNodes(node.children);
+                        }
+                        return true;
+                    });
+                };
+                setNodes(filterNodes(nodes));
+            };
+
+            const generateJson = (nodeList, level = 0) => {
+                let result = '';
+                const indent = '     '.repeat(level);
+                
+                nodeList.forEach((node, index) => {
+                    const isLast = index === nodeList.length - 1;
+                    const key = `"${node.key}"`;
+                    let value = node.value;
+
+                    if (node.type === 'string') value = `"${value}"`;
+                    else if (node.type === 'number') value = parseFloat(value) || 0;
+                    else if (node.type === 'boolean') value = value.toLowerCase() === 'true';
+                    
+                    const comment = node.comment ? ` // ${node.comment}` : '';
+                    
+                    if (node.type === 'array') {
+                        result += `${indent}${key}: [\n`;
+                        result += `${indent}     {\n`;
+                        if (node.children.length) {
+                            result += generateJson(node.children, level + 2);
+                        }
+                        result += `${indent}     }${isLast ? '' : ','}\n`;
+                        result += `${indent}]${comment}\n`;
+                    } else if (node.type === 'object') {
+                        result += `${indent}${key}: {\n`;
+                        if (node.children.length) {
+                            result += generateJson(node.children, level + 1);
+                        }
+                        result += `${indent}}${isLast ? '' : ','}${comment}\n`;
+                    } else {
+                        result += `${indent}${key}: ${value}${isLast ? '' : ','}${comment}\n`;
+                    }
+                });
+
+                return result;
+            };
+
+            const handleGenerate = () => {
+                const jsonString = '{\n' + generateJson(nodes, 1) + '}';
+                setResult(jsonString);
+            };
+
+            const handleCopy = async () => {
+                try {
+                    await navigator.clipboard.writeText(result);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                }
+            };
+
+            const handleDownload = () => {
+                const blob = new Blob([result], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'spec.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            const renderNode = (node, level = 0) => {
+                return (
+                    <div key={node.id} className={`${level === 0 ? 'mb-4' : 'mt-4'} ml-4`}>
+                        <div className="flex gap-4 items-center">
+                            <input
+                                className="border p-2 w-32 rounded"
+                                placeholder="Key"
+                                value={node.key}
+                                onChange={(e) => updateNode(node.id, 'key', e.target.value)}
+                            />
+                            <select
+                                className="border p-2 rounded"
+                                value={node.type}
+                                onChange={(e) => updateNode(node.id, 'type', e.target.value)}
+                            >
+                                <option value="string">String</option>
+                                <option value="number">Number</option>
+                                <option value="boolean">Boolean</option>
+                                <option value="object">Object</option>
+                                <option value="array">Array</option>
+                            </select>
+                            {(node.type !== 'object' && node.type !== 'array') && (
+                                <input
+                                    className="border p-2 w-32 rounded"
+                                    placeholder="Value"
+                                    value={node.value}
+                                    onChange={(e) => updateNode(node.id, 'value', e.target.value)}
+                                />
+                            )}
+                            <input
+                                className="border p-2 w-48 rounded"
+                                placeholder="Comment"
+                                value={node.comment}
+                                onChange={(e) => updateNode(node.id, 'comment', e.target.value)}
+                            />
+                            {(node.type === 'object' || node.type === 'array') && (
+                                <button
+                                    className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                    onClick={() => addNode(node.id)}
+                                >
+                                    +
+                                </button>
+                            )}
+                            <button
+                                className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+                                onClick={() => deleteNode(node.id)}
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <div className="mt-4">
+                            {node.children.map(child => renderNode(child, level + 1))}
+                        </div>
+                    </div>
+                );
+            };
+
+            // Return statement remains the same
+            return (
+                <div className="p-4 max-w-4xl mx-auto">
+                    <h1 className="text-2xl font-bold mb-4">JSON Spec Builder</h1>
+                    
+                    <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4 text-sm">
+                        <h2 className="font-bold text-blue-800 mb-2">Formatting Rules:</h2>
+                        <ul className="list-disc ml-4 text-blue-700">
+                            <li>Event: lowercase or camelCase (e.g., "interaction", "quoteStart")</li>
+                            <li>Object Names: lowercase (e.g., "challenges", "user_data")</li>
+                            <li>Variable Names: lowercase or camelCase (e.g., "category", "stepName")</li>
+                            <li>Values: lowercase only (e.g., "extras 50", "credit card")</li>
+                        </ul>
+                    </div>
+
+                    <div className="mb-4 space-x-2">
+                        <button
+                            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                            onClick={() => addNode()}
+                        >
+                            Add Root Node
+                        </button>
+                        <button
+                            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                            onClick={handleGenerate}
+                        >
+                            Generate JSON
+                        </button>
+                        <div className="inline-block">
+                            {result && (
+                                <div className="inline-block">
+                                    <button
+                                        className={`${copied ? 'bg-green-500' : 'bg-yellow-500'} text-white px-4 py-2 rounded hover:opacity-90 mr-2`}
+                                        onClick={handleCopy}
+                                    >
+                                        {copied ? '✓ Copied!' : 'Copy JSON'}
+                                    </button>
+                                    <button
+                                        className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600"
+                                        onClick={handleDownload}
+                                    >
+                                        Download JSON
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-lg shadow mb-4">
+                        {nodes.map(node => renderNode(node))}
+                    </div>
+
+                    {result && (
+                        <div className="bg-gray-800 p-4 rounded-lg shadow">
+                            <pre className="text-gray-100 json-output">{result}</pre>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        ReactDOM.render(<JsonSpecBuilder />, document.getElementById('root'));
+    </script>
+</body>
+</html>
