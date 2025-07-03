@@ -125,7 +125,12 @@
             <input type="text" id="jsonName" placeholder="Enter name for your JSON specification" 
                    style="width: 100%; max-width: 400px; padding: 10px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px;"
                    value="">
+            <small style="color: #6b7280; font-style: italic; display: block; margin-top: 5px;">
+                💡 This name will be used as the filename when you download the JSON file
+            </small>
         </div>
+
+
 
         <div class="header-buttons">
             <button class="btn-primary" id="addRootBtn">➕ Add Root Node</button>
